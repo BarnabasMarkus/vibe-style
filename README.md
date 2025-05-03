@@ -1,87 +1,83 @@
 # VibeStyle
 
-VibeStyle is a text-to-image search application that helps users find their perfect outfit by entering a text description. It leverages OpenAI's CLIP model for embedding generation and FAISS for efficient similarity search.
+Ever wondered what "business casual with a twist of avocado toast" looks like? Or want to see "cyberpunk raincoat" or "grandma's chic knitting club" in fashion form? VibeStyle lets you search for wild, fun, or classic outfit vibes—just type your dream look and see what pops up!
+
+VibeStyle is a fashion search engine that helps you find outfits matching any vibe you can describe—like "casual summer dress", "retro 90s street style", or "elegant evening gown"—using deep learning and vector similarity search. It provides both a web UI (Streamlit) and an API (FastAPI) for searching a large collection of fashion images.
 
 ## Features
-- **Text-to-Image Search**: Enter a text query to find matching images from a dataset.
-- **Streamlit Web App**: User-friendly interface for searching outfits.
-- **REST API**: Expose search functionality via FastAPI.
-- **Batch Processing**: Efficiently process large datasets to build FAISS indices.
 
-## Dataset
-The project uses the [Fashion Product Images Dataset](https://www.kaggle.com/datasets/paramaggarwal/fashion-product-images-dataset). Download the dataset and place it in the `fashion-dataset/images` folder.
+- **Text-to-image search:** Enter a description (e.g., "casual summer dress") to find matching outfits.
+- **Streamlit UI:** User-friendly web interface for interactive searching.
+- **FastAPI backend:** REST API for programmatic access.
+- **Efficient search:** Uses FAISS for fast vector similarity search over image embeddings.
+- **Example queries:** Quickly try out popular fashion vibes.
 
-## Installation
+## Project Structure
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd vibe-style
-   ```
+- `app.py` — Streamlit web application.
+- `api.py` — FastAPI server for API access.
+- `build_index.py` — Script to build the FAISS index from image embeddings.
+- `config.py` — Configuration (paths, model names, etc).
+- `utils.py` — Utility functions (loading models, searching, etc).
+- `fashion_index.faiss` — Saved FAISS index (generated).
+- `image_paths.pt` — List of image paths (generated).
+- `fashion-dataset/images/` — Folder containing fashion images.
 
-2. Install dependencies:
-   ```bash
-   pip install -r requriments.txt
-   ```
+## Setup
 
-3. Download the dataset and place it in the `fashion-dataset/images` folder.
+1. **Clone the repository** and install dependencies:
+    ```bash
+    git clone <repo-url>
+    cd vibe-style
+    pip install -r requirements.txt
+    ```
 
-4. Set up environment variables:
-   - `IMAGE_FOLDER`: Path to the folder containing images (default: `fashion-dataset/images`).
-   - `INDEX_PATH`: Path to save/load the FAISS index (default: `image_index.bin`).
-   - `API_LOG_FILE`: Path to save API logs (default: `api_calls.log`).
-   - `PORT`: Port for the FastAPI server (default: `8000`).
+2. **Prepare the dataset:**
+    - Place your fashion images in the folder specified by `image_folder` in `config.py`.
+
+3. **Build the index:**
+    ```bash
+    python build_index.py
+    ```
+
+4. **Run the Streamlit app:**
+    ```bash
+    streamlit run app.py
+    ```
+
+5. **Run the API server:**
+    ```bash
+    python api.py
+    ```
 
 ## Usage
 
-### 1. Build the FAISS Index
-Run the `build_index.py` script to process images and build the FAISS index:
-```bash
-python build_index.py --image_folder fashion-dataset/images --batch_size 100 --index_path image_index.bin
-```
+- **Web UI:** Open the Streamlit app in your browser. Enter a description or click an example to search for outfits.
+- **API:** Send a GET request to `/search` with a `query` parameter.
 
-### 2. Start the Streamlit App
-Launch the web app to search for outfits:
-```bash
-streamlit run app.py
-```
+    Example:
+    ```
+    GET http://localhost:8000/search?query=casual+summer+dress
+    ```
 
-### 3. Start the REST API
-Run the FastAPI server to expose search functionality:
-```bash
-python api.py
-```
+    Or use `curl` from the command line:
+    ```bash
+    curl "http://localhost:8000/search?query=retro+90s+street+style"
+    curl "http://localhost:8000/search?query=business+casual+with+a+twist+of+avocado+toast"
+    curl "http://localhost:8000/search?query=grandma's+chic+knitting+club"
+    ```
 
-### 4. Search for Outfits
-- **Web App**: Enter a text query in the Streamlit app to find matching outfits.
-- **API**: Use the `/search` endpoint to query the API:
-  ```bash
-  curl "http://localhost:8000/search?query=bohemian+summer+vibes&top_k=5"
-  ```
+## Configuration
 
-#### Example Queries
-Here are some creative examples of text queries you can try:
-- `"bohemian summer vibes"`
-- `"elegant evening gown with sequins"`
-- `"casual streetwear with a pop of neon"`
-- `"vintage floral dress for a garden party"`
-- `"cozy winter outfit with a knitted sweater"`
-- `"bold and edgy leather jacket look"`
-- `"minimalist monochrome outfit"`
-
-## Project Structure
-- `search.py`: Core search logic using CLIP and FAISS.
-- `build_index.py`: Script to process images and build the FAISS index.
-- `app.py`: Streamlit web app for user interaction.
-- `api.py`: FastAPI server for RESTful search.
-- `requriments.txt`: List of dependencies.
-- `.gitignore`: Files and folders to ignore in version control.
+Edit `config.py` to change model checkpoints, batch sizes, image folder paths, and index file locations.
 
 ## License
-This project is licensed under the MIT License.
+
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
-- [OpenAI CLIP](https://github.com/openai/CLIP)
+
 - [FAISS](https://github.com/facebookresearch/faiss)
 - [Streamlit](https://streamlit.io/)
-- [Fashion Product Images Dataset](https://www.kaggle.com/datasets/paramaggarwal/fashion-product-images-dataset)
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [Fashion-CLIP](https://huggingface.co/patrickjohncyh/fashion-clip)

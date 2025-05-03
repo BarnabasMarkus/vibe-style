@@ -1,104 +1,67 @@
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+import numpy as np
 import torch
 import faiss
-from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 from tqdm import tqdm
+import utils
+import config
 
-
-# Load CLIP model and processor
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", use_fast=False)
-
-
-def get_image_paths(image_folder):
-    """
-    Get paths of all images in the specified folder.
-    """
-    if not os.path.exists(image_folder):
-        raise FileNotFoundError(f"Image folder '{image_folder}' does not exist.")
-
-    image_paths = [
-        os.path.join(image_folder, fname)
-        for fname in os.listdir(image_folder)
-        if fname.lower().endswith((".jpg", ".jpeg", ".png"))
-    ]
-
-    if not image_paths:
-        raise ValueError(f"No valid image files found in '{image_folder}'.")
-
-    print(f"Found {len(image_paths)} images in '{image_folder}'.")
-    return image_paths
-
-
-def process_images_in_batches(image_paths, batch_size=10):
-    """
-    Process images in batches, compute embeddings, and add them to the FAISS index.
-    """
-    dimension = None
-    index = None
-
-    # Initialize tqdm progress bar
-    total_batches = (len(image_paths) + batch_size - 1) // batch_size  # Calculate total number of batches
-    progress_bar = tqdm(total=total_batches, desc="Processing Batches", unit="batch")
-
-    for i in range(0, len(image_paths), batch_size):
+def get_image_features(image_paths,
+                       processor,
+                       model,
+                       batch_size,
+                       device):
+    # Initialize empty list to store embeddings
+    embeddings = []
+    model.eval()
+    for i in tqdm(range(0, len(image_paths), batch_size)):
         batch_paths = image_paths[i:i + batch_size]
-        images = []
-
-        # Load and preprocess images
-        for image_path in batch_paths:
-            try:
-                with Image.open(image_path) as img:
-                    images.append(img.convert("RGB"))
-            except Exception as e:
-                print(f"Warning: Failed to process image '{image_path}'. Error: {e}")
-                continue
-
-        if not images:
-            print(f"Skipping batch {i // batch_size + 1} due to no valid images.")
-            continue
-
-        # Process images with CLIP
+        images = [Image.open(path).convert('RGB') for path in batch_paths]
         inputs = processor(images=images, return_tensors="pt", padding=True)
+        # Move all tensors to device and ensure float dtype
+        for k, v in inputs.items():
+            if isinstance(v, torch.Tensor):
+                inputs[k] = v.float().to(device)
         with torch.no_grad():
-            image_embeddings = model.get_image_features(**inputs)
-
-        # Normalize embeddings
-        image_embeddings = image_embeddings / image_embeddings.norm(dim=1, keepdim=True)
-
-        # Initialize FAISS index if not already done
-        if index is None:
-            dimension = image_embeddings.shape[1]
-            index = faiss.IndexFlatL2(dimension)
-
-        # Add embeddings to the index
-        index.add(image_embeddings.numpy())
-        # print(f"Processed batch {i // batch_size + 1}, added {len(batch_paths)} embeddings to the index.")
-
-        # Update progress bar
-        progress_bar.update(1)
-
-    if index is None:
-        raise RuntimeError("No embeddings were added to the FAISS index. Check your image folder and processing logic.")
-
-    return index
-
+            image_features = model.get_image_features(**inputs)
+            # Check for NaNs immediately after model output
+            if torch.isnan(image_features).any():
+                print("NaN detected in image_features after model forward!")
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        embeddings.extend(image_features.cpu().numpy())
+    # Convert list to numpy array
+    embeddings = np.array(embeddings)
+    return embeddings
 
 if __name__ == "__main__":
-    import argparse
 
-    parser = argparse.ArgumentParser(description="Build FAISS index for image embeddings.")
-    parser.add_argument("--image_folder", type=str, required=True, help="Path to the folder containing images.")
-    parser.add_argument("--batch_size", type=int, default=1000, help="Batch size for processing images.")
-    parser.add_argument("--index_path", type=str, default="image_index.bin", help="Path to save the FAISS index.")
-    args = parser.parse_args()
+    # Set device
+    device = utils.get_device()
 
-    try:
-        print(f"Processing images from '{args.image_folder}' in batches of {args.batch_size}.")
-        image_paths = get_image_paths(args.image_folder)
-        index = process_images_in_batches(image_paths, batch_size=args.batch_size)
-        faiss.write_index(index, args.index_path)
-        print(f"FAISS index with {index.ntotal} embeddings saved to '{args.index_path}'.")
-    except Exception as e:
-        print(f"Error: {e}")
+    # Load the model and processor
+    model, processor = utils.load_model(model_ckpt=config.model_ckpt, device=device)
+    print(f"Loaded model {config.model_ckpt} on {device}")
+
+    # Load image paths
+    image_paths = utils.load_image_paths(config.image_folder)
+    print(f"Found {len(image_paths)} images in {config.image_folder}")
+
+    # Get image features
+    embeddings = get_image_features(image_paths[:config.image_processing_limit],
+                                    processor=processor,
+                                    model=model,
+                                    batch_size=config.batch_size,
+                                    device=device)
+
+    # Create FAISS index
+    dimension = embeddings.shape[1]  # CLIP embedding dimension
+    index = faiss.IndexFlatL2(dimension)
+    index.add(embeddings)
+
+    # Save the index and paths for later use
+    faiss.write_index(index, config.index_path)
+    torch.save(image_paths, config.image_paths)
+
+    print(f"Created and saved index with {len(embeddings)} embeddings")

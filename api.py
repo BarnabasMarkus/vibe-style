@@ -1,10 +1,11 @@
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import uvicorn
 import logging
 from fastapi import FastAPI, HTTPException, Request, Depends
-import search
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+import utils
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -18,15 +19,8 @@ if not api_logger.handlers:
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
     api_logger.addHandler(file_handler)
 
-# Load configurations from environment variables
-image_folder = os.getenv("IMAGE_FOLDER", "fashion-dataset/images")
-index_path = os.getenv("INDEX_PATH", "image_index.bin")
-port = int(os.getenv("PORT", 8000))
-
-# Load model, processor, image paths, and index
-model, processor = search.load_clip_model()
-image_paths = search.load_image_paths(image_folder)
-index = search.load_faiss_index(index_path)
+# Load resources
+device, model, processor, index, image_paths = utils.load_rescources()
 
 # Application setup
 app = FastAPI()
@@ -57,10 +51,22 @@ async def search_images(query: str, top_k: int = 5):
         raise HTTPException(status_code=400, detail="Top K cannot exceed 100.")
 
     try:
-        results = search.get_top_matches(query, model, processor, index, image_paths, top_k)
-        return {"results": results}
+        results = utils.search_images_by_vibe(query=query,
+                                              processor=processor,
+                                              model=model,
+                                              index=index,
+                                              image_paths=image_paths,
+                                              top_k=top_k,
+                                              device=device)
+        # Convert results to a list of dicts with native Python types
+        image_paths_list = list(results[0])
+        scores_list = [float(s) for s in results[1]]
+        return {"results": [
+            {"image_path": path, "score": score}
+            for path, score in zip(image_paths_list, scores_list)
+        ]}
     except Exception as e:
         raise HTTPException(status_code=500, detail="An error occurred during the search process.") from e
 
 if __name__ == "__main__":
-    uvicorn.run("api:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
